@@ -85,8 +85,9 @@ git push -u origin main
 
 **Actions → WorkBuddy 每日签到 → Run workflow**：
 
-- 勾选 `check_only`：只验证链路、不签到，但**会推送一条日报**，正好用来验证 WxPusher 配置；日志应出现 `"status": "ok", "action": "skip_check_only"`。
-- 取消勾选：真实签到并推送日报；日志显示 `clicked`（领取成功）或 `skip_already_signed`（今日已签），两者都算成功。
+- 勾选 `check_only`：只验证链路、不签到，日志出现 `"status": "ok"`。
+- 同时勾选 `force_push`：**强制推送一条日报**（忽略「今日已签」去重），专门用来验证 WxPusher 配置；日志应出现 `push.ok = true` 与 `"reason": "已推送：11月11日 周三 成功"`。
+- 两个都不勾：真实签到并按「每天一条」规则推送；日志显示 `clicked`（领取成功）或 `skip_already_signed`（今日已签），两者都算成功。
 - 推送结果看 JSON 里的 `push` 字段：`{"enabled": true, "ok": true, "reason": "已推送：11月11日 周三 成功"}`。
 
 ---
@@ -95,7 +96,7 @@ git push -u origin main
 
 - **主题（通知栏标题）**：`11月11日 周三 成功` —— 日期 + 空格 + 是否成功（`成功` / `失败`），中间用一个空格隔开；日期含 **UTC+8** 的月日与星期，不依赖 GitHub runner 的本地时区。正文抬头同步带结果，正文另带 UTC+8 完整时间戳。
 - **内容**：执行结果、状态、本次积分、积分余额、连续签到天数、长效令牌是否轮换。全部不含任何令牌。
-- **每天一条**：workflow 一天跑两次做幂等兜底，第二次「今日已签」默认不再重复推送；设 `WXPUSHER_ALWAYS=1` 可关闭去重。
+- **每天一条**：workflow 一天跑两次做幂等兜底，第二次「今日已签」默认不再重复推送；设 `WXPUSHER_ALWAYS=1` 可关闭去重，手动运行时也可勾选 `force_push` 强制推一条用于验证。
 - **失败隔离**：未配置 / 缺 UID / 接口报错都只写进日志与 Step Summary，不影响签到结果与退出码。
 - 使用 `contentType=2`（HTML）；`summary` 为通知栏标题（接口上限 100 字，各端约显示 20 字，故保持简短）。
 - 成功判定：接口返回 `code=1000` 或 `success=true`（仅代表任务已受理）。
