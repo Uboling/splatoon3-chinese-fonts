@@ -23,8 +23,6 @@ jobs:
   checkin:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    env:
-      RT_OUT: ${{ runner.temp }}/rotated_rt.txt
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
@@ -37,7 +35,7 @@ jobs:
       - name: 执行签到
         env:
           WORKBUDDY_REFRESH_TOKEN: ${{ secrets.WORKBUDDY_REFRESH_TOKEN }}
-          WORKBUDDY_RT_OUT: ${{ env.RT_OUT }}
+          WORKBUDDY_RT_OUT: ${{ runner.temp }}/rotated_rt.txt
           WXPUSHER_APP_TOKEN: ${{ secrets.WXPUSHER_APP_TOKEN }}
           WXPUSHER_UID: ${{ secrets.WXPUSHER_UID }}
           WXPUSHER_TOPIC_ID: ${{ secrets.WXPUSHER_TOPIC_ID }}
@@ -54,14 +52,15 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.SECRETS_ADMIN_TOKEN }}
         run: |
-          if [ -z "$GH_TOKEN" ] || [ ! -s "$RT_OUT" ]; then
+          RT_FILE="$RUNNER_TEMP/rotated_rt.txt"
+          if [ -z "$GH_TOKEN" ] || [ ! -s "$RT_FILE" ]; then
             echo "::notice::跳过回写：未配置 SECRETS_ADMIN_TOKEN，或本次未发生令牌轮换"
             exit 0
           fi
           # 从 stdin 读取，令牌值不会出现在命令行或日志中
-          gh secret set WORKBUDDY_REFRESH_TOKEN --repo "${{ github.repository }}" < "$RT_OUT"
+          gh secret set WORKBUDDY_REFRESH_TOKEN --repo "${{ github.repository }}" < "$RT_FILE"
           echo "已回写轮换后的长效令牌"
 
       - name: 清理临时令牌文件
         if: always()
-        run: rm -f "$RT_OUT"
+        run: rm -f "$RUNNER_TEMP/rotated_rt.txt"
