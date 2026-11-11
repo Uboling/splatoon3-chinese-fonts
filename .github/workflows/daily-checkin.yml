@@ -1,0 +1,67 @@
+name: WorkBuddy 每日签到
+
+on:
+  schedule:
+    # GitHub Actions cron 用 UTC；UTC+8 = 北京时间
+    - cron: '17 1 * * *'   # 北京 09:17
+    - cron: '17 5 * * *'   # 北京 13:17（冗余兜底；签到接口幂等，重复跑不会重复发奖）
+  workflow_dispatch:
+    inputs:
+      check_only:
+        description: '只验证链路、不执行签到（会推送一条日报用于验证推送配置）'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: workbuddy-daily-checkin
+  cancel-in-progress: false
+
+jobs:
+  checkin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      RT_OUT: ${{ runner.temp }}/rotated_rt.txt
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 准备 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 执行签到
+        env:
+          WORKBUDDY_REFRESH_TOKEN: ${{ secrets.WORKBUDDY_REFRESH_TOKEN }}
+          WORKBUDDY_RT_OUT: ${{ env.RT_OUT }}
+          WXPUSHER_APP_TOKEN: ${{ secrets.WXPUSHER_APP_TOKEN }}
+          WXPUSHER_UID: ${{ secrets.WXPUSHER_UID }}
+          WXPUSHER_TOPIC_ID: ${{ secrets.WXPUSHER_TOPIC_ID }}
+        run: |
+          args=""
+          if [ "${{ inputs.check_only }}" = "true" ]; then
+            args="--check-only"
+          fi
+          python scripts/cloud_checkin.py --json $args
+
+      - name: 回写轮换后的长效令牌
+        # 刷新成功即可能已轮换令牌；即使签到失败也必须回写，否则旧令牌会失效。
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.SECRETS_ADMIN_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ] || [ ! -s "$RT_OUT" ]; then
+            echo "::notice::跳过回写：未配置 SECRETS_ADMIN_TOKEN，或本次未发生令牌轮换"
+            exit 0
+          fi
+          # 从 stdin 读取，令牌值不会出现在命令行或日志中
+          gh secret set WORKBUDDY_REFRESH_TOKEN --repo "${{ github.repository }}" < "$RT_OUT"
+          echo "已回写轮换后的长效令牌"
+
+      - name: 清理临时令牌文件
+        if: always()
+        run: rm -f "$RT_OUT"
