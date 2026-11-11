@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+*.env
+*.local
+
+# 凭据与运行时临时产物，禁止入库
+checkin-rt.json
+checkin-cred.json
+rotated_rt.txt
+result.json
+*.token
+*.secret
