@@ -8,7 +8,11 @@ on:
   workflow_dispatch:
     inputs:
       check_only:
-        description: '只验证链路、不执行签到（会推送一条日报用于验证推送配置）'
+        description: '只验证链路、不执行签到'
+        type: boolean
+        default: false
+      force_push:
+        description: '强制推送一条日报（忽略今日已签去重，用于验证推送配置）'
         type: boolean
         default: false
 
@@ -43,6 +47,9 @@ jobs:
           args=""
           if [ "${{ inputs.check_only }}" = "true" ]; then
             args="--check-only"
+          fi
+          if [ "${{ inputs.force_push }}" = "true" ]; then
+            export WXPUSHER_ALWAYS=1
           fi
           python scripts/cloud_checkin.py --json $args
 
