@@ -15,7 +15,8 @@ refresh_token 完成每日签到。纯 Python 标准库，无第三方依赖，P
      当日未签时领取（幂等；当日已签返回 code 10001）
 
 执行结束后，可选把签到日报推送到 WxPusher（POST /api/send/message），
-主题按「日期 + 空格 + 是否成功」输出，如「11月11日 周三 成功」（UTC+8 月日与星期）。
+主题为「WorkBuddy 签到推送 + UTC+8 日期 + 空格 + 是否成功」，如
+「WorkBuddy 签到推送 11月11日 周三 成功」。
 
 安全边界（硬规则）：
   - 凭据只从环境变量 WORKBUDDY_REFRESH_TOKEN 读取；任何输出（文字 / JSON /
@@ -63,6 +64,7 @@ BILLING_BASE = (os.environ.get("WORKBUDDY_BILLING_BASE")
                 or "https://www.codebuddy.cn/v2").rstrip("/")
 WXPUSHER_API_URL = (os.environ.get("WXPUSHER_API_URL")
                     or "https://wxpusher.zjiecode.com/api/send/message")
+TITLE_PREFIX = "WorkBuddy 签到推送"
 STATUS_PATH = "/billing/meter/checkin-activity-status"
 CHECKIN_PATH = "/billing/meter/daily-checkin"
 
@@ -182,14 +184,15 @@ def _date_label():
 def _build_daily_report(result):
     """构造 WxPusher 日报：summary 是通知栏标题，content 是 HTML 正文。
 
-    主题（summary）格式：日期 + 空格 + 是否成功，如「11月11日 周三 成功」；
-    日期含 UTC+8 的月日与星期，正文抬头同步带结果，正文不含任何令牌信息。
+    主题（summary）格式：前缀 + UTC+8 日期 + 空格 + 是否成功，
+    如「WorkBuddy 签到推送 11月11日 周三 成功」。
+    正文抬头与主题一致，正文不含任何令牌信息。
     """
     label = _date_label()
     timestamp = _cn_now().strftime("%Y-%m-%d %H:%M")
     ok = result.get("status") == "ok"
     outcome = "成功" if ok else "失败"
-    summary = "%s %s" % (label, outcome)
+    summary = "%s %s %s" % (TITLE_PREFIX, label, outcome)
     color = "#1a7f37" if ok else "#c62828"
 
     rows = [
@@ -205,7 +208,7 @@ def _build_daily_report(result):
     rows.append(("长效令牌轮换", "是" if result.get("rt_rotated") else "否"))
 
     lines = [
-        "<h2>WorkBuddy 签到日报 · %s %s</h2>" % (label, outcome),
+        "<h2>%s</h2>" % summary,
         "<p>%s（UTC+8）｜<b style=\"color:%s\">%s</b></p>"
         % (timestamp, color, "执行成功" if ok else "执行失败"),
         "<table cellpadding=\"4\">",
