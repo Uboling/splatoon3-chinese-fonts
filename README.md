@@ -76,7 +76,6 @@ git push -u origin main
 | `WXPUSHER_APP_TOKEN` | ✅（要日报时） | WxPusher 应用 `appToken`（`AT_...`） |
 | `WXPUSHER_UID` | ✅ 二选一 | 接收者 UID；与 `WXPUSHER_TOPIC_ID` 填一个即可 |
 | `WXPUSHER_TOPIC_ID` | ✅ 二选一 | 数字主题 ID |
-| `WXPUSHER_ALWAYS` | ⬜ 可选 | 设为 `1` 时「今日已签」也推送（默认每天一条） |
 | `SECRETS_ADMIN_TOKEN` | ⬜ 可选但推荐 | 用于自动回写轮换后的令牌，见下节 |
 
 `SECRETS_ADMIN_TOKEN` 建议用 **fine-grained PAT**：只授权这一个仓库，Repository permissions 只勾 **Secrets: Read and write**，到期时间设最短可用周期。不配也能跑，但令牌轮换后可能需要手动更新 Secret。
@@ -85,9 +84,8 @@ git push -u origin main
 
 **Actions → WorkBuddy 每日签到 → Run workflow**：
 
-- 勾选 `check_only`：只验证链路、不签到，日志出现 `"status": "ok"`。
-- 同时勾选 `force_push`：**强制推送一条日报**（忽略「今日已签」去重），专门用来验证 WxPusher 配置；日志应出现 `push.ok = true` 与 `"reason": "已推送：WorkBuddy 签到推送 11月11日 周三 成功"`。
-- 两个都不勾：真实签到并按「每天一条」规则推送；日志显示 `clicked`（领取成功）或 `skip_already_signed`（今日已签），两者都算成功。
+- 勾选 `check_only`：只验证链路、不签到，但**仍会推送一条日报**，正好用来验证 WxPusher 配置；日志应出现 `"status": "ok"` 与 `push.ok = true`。
+- 不勾选：真实签到并推送日报；日志显示 `clicked`（领取成功）或 `skip_already_signed`（今日已签），两者都算成功。
 - 推送结果看 JSON 里的 `push` 字段：`{"enabled": true, "ok": true, "reason": "已推送：WorkBuddy 签到推送 11月11日 周三 成功"}`。
 
 ---
@@ -97,14 +95,14 @@ git push -u origin main
 - **主题（通知栏标题）**：`WorkBuddy 签到推送 11月11日 周三 成功` —— 固定前缀 `WorkBuddy 签到推送` + UTC+8 日期 + 空格 + 是否成功（`成功` / `失败`）；日期含月日与星期，不依赖 GitHub runner 的本地时区。正文抬头与主题一致，正文另带 UTC+8 完整时间戳。
 - 各端通知栏通常只显示约 20 字，加前缀后日期 / 结果可能被截断；完整标题始终在消息正文抬头里。
 - **内容**：执行结果、状态、本次积分、积分余额、连续签到天数、长效令牌是否轮换。全部不含任何令牌。
-- **每天一条**：workflow 一天跑两次做幂等兜底，第二次「今日已签」默认不再重复推送；设 `WXPUSHER_ALWAYS=1` 可关闭去重，手动运行时也可勾选 `force_push` 强制推一条用于验证。
+- **每天一条、且必达**：只保留一条 cron，每次运行都会推送日报——**即使当天你已经在客户端签到过也照推**（此前「已签就跳过」会让日报收不到）。
 - **失败隔离**：未配置 / 缺 UID / 接口报错都只写进日志与 Step Summary，不影响签到结果与退出码。
 - 使用 `contentType=2`（HTML）；`summary` 为通知栏标题（接口上限 100 字，各端约显示 20 字，故保持简短）。
 - 成功判定：接口返回 `code=1000` 或 `success=true`（仅代表任务已受理）。
 
 ## 三、定时与令牌轮换
 
-- **cron 用 UTC**：workflow 里两条 cron 分别是北京 **09:17** 和 **13:17**。避开整点可降低 GitHub 排队延迟；双跑是幂等兜底，不需要可删掉第二条。
+- **cron 用 UTC**：单条 cron 为北京 **09:17**。注意 GitHub 的 schedule 在高峰期会延迟，实测曾延迟 7-8 小时（09:17 的定时实际 16:23 才跑）；要求严格准时可改用外部定时器触发 `workflow_dispatch`。
 - **60 天休眠**：GitHub 会停用连续 60 天无任何活动的仓库的定时 workflow。偶尔手动触发一次、或 push 一次即可恢复。
 - **令牌轮换是关键坑**：刷新接口每次可能返回新的 `refresh_token`，而 Actions 容器没有持久盘。脚本在刷新成功后**立刻**把新令牌写到 `$RUNNER_TEMP/rotated_rt.txt`（0600），workflow 再用 `gh secret set` 从 stdin 回写到同名 Secret（值不进日志），最后删除临时文件。
   - 配了 `SECRETS_ADMIN_TOKEN` → 全自动续期，长期免维护。
@@ -130,7 +128,7 @@ git push -u origin main
 | `skip_already_signed` / `code 10001` | 正常幂等返回，不是失败 |
 | 日报没收到 | 看 `push.enabled` / `push.reason`；最常见是缺 `WXPUSHER_UID`、UID 未关注应用、或 appToken 已重置 |
 | `push.ok=false` | 见 `push.reason`；确认接口返回码，必要时用 `check_only` 手动跑一次复现 |
-| 一天收到两条 | 默认已去重；检查是否误设了 `WXPUSHER_ALWAYS=1` |
+| 一天收到两条 | 单条 cron 下不会；手动 Run 过会额外多一条 |
 | HTTP 超时 / 连接失败 | GitHub 托管 runner 在境外，访问 `copilot.tencent.com`、`www.codebuddy.cn`、`wxpusher.zjiecode.com` 属跨境链路，需实测；不稳时改用 **self-hosted runner（国内机器）** 或腾讯云函数 SCF |
 | `skip_check_only` | 勾选了「只验证链路」，未执行签到，符合预期 |
 | 回写报 `Resource not accessible` | `SECRETS_ADMIN_TOKEN` 权限不足，fine-grained PAT 需授予该仓库 Secrets: Read and write |
