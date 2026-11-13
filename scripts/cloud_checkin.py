@@ -38,7 +38,6 @@ WxPusher 日报推送（可选；凭据只从环境变量读，绝不写进代�
   WXPUSHER_APP_TOKEN       启用推送时必填：应用 appToken
   WXPUSHER_UID             接收者 UID，多个用逗号分隔；与 TOPIC_ID 二选一
   WXPUSHER_TOPIC_ID        接收主题 ID（数字），多个用逗号分隔
-  WXPUSHER_ALWAYS          设为 1 时「今日已签」也推送（默认去重，每天一条）
   WXPUSHER_API_URL         可选，覆盖推送端点（本地自测用）
 
 命令行：
@@ -224,7 +223,7 @@ def _build_daily_report(result):
 def _push_wxpusher(result):
     """把签到日报推送到 WxPusher。配置缺失或推送失败都不影响签到结果。
 
-    幂等双跑时「今日已签」默认不再重复推送；设 WXPUSHER_ALWAYS=1 可关闭去重。
+    每次运行都会推送一条日报（当天是否已签到不影响），保证日报必达。
     """
     info = {"enabled": False, "ok": None, "reason": ""}
     token = (os.environ.get("WXPUSHER_APP_TOKEN") or "").strip()
@@ -243,13 +242,6 @@ def _push_wxpusher(result):
     if not uids and not topic_ids:
         info.update(ok=False,
                     reason="缺少接收者：需配置 WXPUSHER_UID 或 WXPUSHER_TOPIC_ID")
-        return info
-
-    always = (os.environ.get("WXPUSHER_ALWAYS") or "").strip().lower()
-    if (result.get("status") == "ok"
-            and result.get("action") == "skip_already_signed"
-            and always not in ("1", "true", "yes")):
-        info["reason"] = "今日已签到，跳过重复日报"
         return info
 
     summary, content = _build_daily_report(result)
