@@ -2,17 +2,14 @@ name: WorkBuddy 每日签到
 
 on:
   schedule:
-    # GitHub Actions cron 用 UTC；UTC+8 = 北京时间
+    # GitHub Actions cron 用 UTC；UTC+8 = 北京时间。
+    # 注意：schedule 在高峰期可能延迟数小时（实测曾延迟 7-8 小时）；
+    # 只保留单条 cron，避免一天推送两条日报。
     - cron: '17 1 * * *'   # 北京 09:17
-    - cron: '17 5 * * *'   # 北京 13:17（冗余兜底；签到接口幂等，重复跑不会重复发奖）
   workflow_dispatch:
     inputs:
       check_only:
         description: '只验证链路、不执行签到'
-        type: boolean
-        default: false
-      force_push:
-        description: '强制推送一条日报（忽略今日已签去重，用于验证推送配置）'
         type: boolean
         default: false
 
@@ -47,9 +44,6 @@ jobs:
           args=""
           if [ "${{ inputs.check_only }}" = "true" ]; then
             args="--check-only"
-          fi
-          if [ "${{ inputs.force_push }}" = "true" ]; then
-            export WXPUSHER_ALWAYS=1
           fi
           python scripts/cloud_checkin.py --json $args
 
